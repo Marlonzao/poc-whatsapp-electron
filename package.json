@@ -20,6 +20,7 @@
     "electron": "^22.3.27"
   },
   "dependencies": {
-    "@wppconnect/wa-version": "^1.4.82"
+    "@wppconnect/wa-version": "^1.4.82",
+    "mockttp": "^3.10.2"
   }
 }

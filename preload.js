@@ -6,5 +6,20 @@
  *
  * https://www.electronjs.org/docs/latest/tutorial/sandbox
  */
+navigator.serviceWorker
+	.getRegistrations()
+	.then((registrations) => {
+		for (let registration of registrations) {
+			registration.unregister();
+		}
+	})
+	.catch((err) => null);
 
-console.log(window.Debug.VERSION);
+// Disable service worker registration
+// @ts-ignore
+navigator.serviceWorker.register = new Promise(() => {});
+
+setInterval(() => {
+	window.onerror = console.error;
+	window.onunhandledrejection = console.error;
+}, 500);
