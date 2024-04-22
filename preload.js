@@ -6,5 +6,3 @@
  *
  * https://www.electronjs.org/docs/latest/tutorial/sandbox
  */
-
-console.log(window.Debug.VERSION);
