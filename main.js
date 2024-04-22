@@ -1,5 +1,14 @@
 // Modules to control application life and create native browser window
 const { app, BrowserWindow } = require("electron");
+
+app.commandLine.appendSwitch('ignore-certificate-errors')
+app.commandLine.appendSwitch('disable-content-security-policy')
+app.commandLine.appendSwitch('disable-proxy-certificate-handler')
+app.commandLine.appendSwitch('ignore-certificate-errors-spki-list')
+app.commandLine.appendSwitch('allow-insecure-localhost', 'true');
+
+global.process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
+
 const path = require("node:path");
 
 const wa_version = require("@wppconnect/wa-version");
@@ -33,21 +42,15 @@ function createWindow() {
 		width: 800,
 		height: 600,
 		webPreferences: {
+			webSecurity: false,
+			nodeIntegration: false,
+			contextIsolation: false,
 			preload: path.join(__dirname, "preload.js"),
 		},
 	});
 
 	mainWindow.webContents.loadURL(`https://web.whatsapp.com`, {
 		userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.3",
-	});
-
-	mainWindow.webContents.session.webRequest.onBeforeRequest((details, callback) => {
-		if (details.url.startsWith("https://web.whatsapp.com/check-update")) {
-			callback({ cancel: true });
-			return;
-		}
-
-		callback({});
 	});
 
 	mainWindow.webContents.openDevTools();
@@ -62,49 +65,30 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
-    const mockttp = require('mockttp');
+	const mockttp = require('mockttp');
 
-    // Create a proxy server with a self-signed HTTPS CA certificate:
     const https = await mockttp.generateCACertificate();
     const server = mockttp.getLocal({ https });
-
-	let path = getPagePath();
-	console.log(path);
-	let index = fs.readFileSync(path, "utf8");
+	
+	await server.start();
+	
+	var index_path = getPagePath('2.2412.x');
+	console.log('index_path', index_path);
 
 	server.forGet("web.whatsapp.com").always().thenPassThrough({
 		beforeResponse: (response) => {
-			response.body = response.body.text;
-			response.body = index;
+			response.body = fs.readFileSync(index_path, "utf8");
 			return response;
-
-			// // Here you can access the real response:
-			// console.log(`Got ${response.statusCode} response with body: ${response.body.text}`);
-	
-			// // Values returned here replace parts of the response:
-			// if (response.headers['content-type']?.startsWith('text/html')) {
-			// 	// E.g. append to all HTML response bodies:
-
-			// } else {
-			// 	return {};
-			// }
 		}
 	});
 
+	server.forGet("https://web.whatsapp.com/check-update").always().thenCloseConnection();
 
 	server.forAnyRequest().thenPassThrough();
+	server.forAnyWebSocket().thenPassThrough();
 
-	await server.start();
+	console.log(`Server running on port ${server.port}`);
 
-    // Print out the server details:
-    const caFingerprint = mockttp.generateSPKIFingerprint(https.cert)
-    console.log(`Server running on port ${server.port}`);
-    console.log(`CA cert fingerprint ${caFingerprint}`);
-
-	app.commandLine.appendSwitch('ignore-certificate-errors')
-	app.commandLine.appendSwitch('disable-content-security-policy')
-	app.commandLine.appendSwitch('disable-proxy-certificate-handler')
-	app.commandLine.appendSwitch('allow-insecure-localhost', 'true');
 	app.commandLine.appendSwitch('proxy-server', `0.0.0.0:${server.port}`);
 
 	createWindow();
