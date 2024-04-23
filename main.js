@@ -1,10 +1,9 @@
 // Modules to control application life and create native browser window
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, session } = require("electron");
 
 app.commandLine.appendSwitch('ignore-certificate-errors')
 app.commandLine.appendSwitch('disable-content-security-policy')
 app.commandLine.appendSwitch('disable-proxy-certificate-handler')
-app.commandLine.appendSwitch('ignore-certificate-errors-spki-list')
 app.commandLine.appendSwitch('allow-insecure-localhost', 'true');
 
 global.process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
@@ -33,10 +32,6 @@ function getPagePath(versionMatch, includePrerelease = true) {
 	return path.join(wa_version.constants.HTML_DIR, max + ".html");
 }
 
-// let path = getPagePath();
-// console.log(path);
-// callback({ webContents: fs.readFileSync(path, "utf8") });
-
 function createWindow() {
 	const mainWindow = new BrowserWindow({
 		width: 800,
@@ -56,14 +51,6 @@ function createWindow() {
 	mainWindow.webContents.openDevTools();
 }
 
-app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
-    event.preventDefault()
-    callback(true)
-})
-
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
 	const mockttp = require('mockttp');
 
@@ -89,7 +76,37 @@ app.whenReady().then(async () => {
 
 	console.log(`Server running on port ${server.port}`);
 
-	app.commandLine.appendSwitch('proxy-server', `0.0.0.0:${server.port}`);
+	app.commandLine.appendSwitch('proxy-server', `localhost:${server.port}`);
+	app.commandLine.appendSwitch('proxy-bypass-list', '<-loopback>');
+	app.commandLine.appendSwitch(
+		'ignore-certificate-errors-spki-list', mockttp.generateSPKIFingerprint(https.cert)
+	);
+
+	const newlineEncodedCertData = `${https.cert.replace(/\r\n|\r|\n/g, '\\n')}`;
+
+	session.defaultSession.setCertificateVerifyProc((req, callback) => {
+		if (
+			req.certificate &&
+			req.certificate.issuerCert &&
+			req.certificate.issuerCert.data === newlineEncodedCertData
+		) {
+			callback(0); // The cert is good, I promise
+		} else {
+			callback(-3); // Fallback to Chromium's own opinion
+		}
+	});
+
+	app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+		if (
+			certificate.issuerCert &&
+			certificate.issuerCert.data === newlineEncodedCertData
+		) {
+		  event.preventDefault();
+		  callback(true);
+		} else {
+		  callback(false);
+		}
+	});
 
 	createWindow();
 
